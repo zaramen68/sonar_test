@@ -184,18 +184,17 @@ std::string get_file_contents(const char *filename)
 
 int main(int argc, char *argv[])
 {
-    int slave_id = 1;
     std::vector<int> id{1,2,3};
     std::vector<ModbusCtx> lines;
     uint32_t time_out = 2'000'000;
+    std::string config_name = "/home/tenderbook/sonars/";
 
     if(argc > 1){
-        std::stringstream convert1(argv[1]);
-        convert1 >> slave_id;
+        config_name += argv[1];
     }
     using namespace std::chrono_literals;
 
-    std::string contents = get_file_contents("/home/tenderbook/sonars/config.yaml");
+    std::string contents = get_file_contents(config_name.c_str());
     ryml::Tree tree = ryml::parse_in_place(ryml::to_substr(contents));
 
     ryml::NodeRef modbus_lines = tree["ModBus"];

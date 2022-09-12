@@ -1,0 +1,10 @@
+ModBus:
+  -line3:
+    port: /dev/ttyUSB1
+    baud: 115200
+    boot_time: 2000
+    devices:
+      -device1:
+        id: 1
+        measure_reg: 4
+        test_reg: 0

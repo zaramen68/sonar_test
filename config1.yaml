@@ -1,3 +1,4 @@
+File: sonar_2.data
 ModBus:
   -line1:
     port: /dev/ttyUSB2
@@ -6,9 +7,5 @@ ModBus:
     devices:
       -device1:
         id: 2
-        measure_reg: 257
-        test_reg: 512
-      -device2:
-        id: 3
         measure_reg: 257
         test_reg: 512

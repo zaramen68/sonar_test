@@ -187,7 +187,9 @@ int main(int argc, char *argv[])
     std::vector<int> id{1,2,3};
     std::vector<ModbusCtx> lines;
     uint32_t time_out = 2'000'000;
+    std::ofstream out;
     std::string config_name = "/home/tenderbook/sonars/";
+    std::chrono::steady_clock::time_point begin;
 
     if(argc > 1){
         config_name += argv[1];
@@ -196,6 +198,12 @@ int main(int argc, char *argv[])
 
     std::string contents = get_file_contents(config_name.c_str());
     ryml::Tree tree = ryml::parse_in_place(ryml::to_substr(contents));
+
+    std::string out_file;
+    auto out_file_ = tree["File"];
+    out_file_ >> out_file;
+
+    out.open(out_file);
 
     ryml::NodeRef modbus_lines = tree["ModBus"];
 
@@ -224,6 +232,7 @@ int main(int argc, char *argv[])
         std::cout << "key: " << port.key() << " val: " << port_str << std::endl;
 
         auto devices = child["devices"];
+
 
         for(ryml::NodeRef device: devices.children()){
 
@@ -277,35 +286,32 @@ int main(int argc, char *argv[])
     //     printf("Run Status Indicator: %s\n", tab_bytes[1] ? "ON" : "OFF");
     // }
 
-    Task request{500};
+    begin = std::chrono::steady_clock::now();
 
-    while (true) {
-        // request([ctx, id]{
+    std::chrono::steady_clock::time_point w_begin;
+    w_begin = std::chrono::steady_clock::now();
+    double w_time = 0.;
+
+    while (w_time <= 20.) {
+        w_time = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - w_begin).count();
 
         for(auto line:lines ){
             if(!line.get_valid()) {
                 continue;
             }
-            // modbus_flush(ctx);
-            // modbus_set_slave(ctx, id_);
-            // modbus_set_response_timeout(ctx, 0, 500'000);
-            // uint16_t tab_reg[2];
-            // int rc;
-
-            // rc = modbus_read_registers(ctx, 257, 1, tab_reg);
-            // // if(!r) {return;}
-            // std::string lable = "sonar id " + std::to_string(id_);
-            // if(rc==1){
-            //     debug_counter(lable, tab_reg[0]);
-            // } else {
-            //     debug_counter(lable + "no data", id_);
 
             for(auto dev:line.get_devices()){
 
-                std::this_thread::sleep_for(0.1s);
+                std::this_thread::sleep_for(0.02s); // меньше - ошибки
+
 
                 std::string lable ="line:  " + line.get_port() + "   sonar:  "+ std::to_string(dev.get_id());
                 if(dev.measure()){
+                    double delta_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - begin).count();
+                    double work_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
+                    if(out.is_open()) out << dev.get_id() << "," <<  dev.get_distance() << "," << delta_time << "," << work_time << std::endl;
+                    begin = std::chrono::steady_clock::now();
+
                     debug_counter(lable + "   distance=  ", dev.get_distance());
                 } else {
                     debug_counter(lable + "   error #  ", dev.get_error_counter());
@@ -323,9 +329,8 @@ int main(int argc, char *argv[])
             debprint.reinit();
     }
 
-            // std::this_thread::sleep_for(0.2s);
-        // });
     // modbus_free(ctx);
+    out.close();
 
     return 0;
 }

@@ -1,10 +1,11 @@
+File: sonar_0.data
 ModBus:
   -line3:
     port: /dev/ttyUSB1
-    baud: 115200
-    boot_time: 2000
+    baud: 9600
+    boot_time: 100
     devices:
       -device1:
-        id: 1
-        measure_reg: 4
-        test_reg: 0
+        id: 3
+        measure_reg: 257
+        test_reg: 512

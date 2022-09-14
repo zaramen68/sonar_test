@@ -308,7 +308,7 @@ int main(int argc, char *argv[])
                 std::string lable ="line:  " + line.get_port() + "   sonar:  "+ std::to_string(dev.get_id());
                 if(dev.measure()){
                     double delta_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - begin).count();
-                    double work_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
+                    double work_time = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
                     if(out.is_open()) out << dev.get_id() << "," <<  dev.get_distance() << "," << delta_time << "," << work_time << std::endl;
                     begin = std::chrono::steady_clock::now();
 

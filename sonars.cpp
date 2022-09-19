@@ -12,9 +12,15 @@
 #include <assert.h>
 #include <fstream>
 #include <vector>
+#include <string>
+#include <unistd.h>			//Used for UART
+#include <fcntl.h>			//Used for UART
+#include <termios.h>	    // for UART
 
 #include <ryml_std.hpp>
 #include <ryml.hpp>
+
+#include "yaml-cpp/yaml.h"
 
 #include "debout.h"
 #include "Task.h"
@@ -167,6 +173,157 @@ private:
     uint32_t time_out;
 };
 
+class UartCtx{
+public:
+    UartCtx(){}
+    UartCtx(std::string port_, char parity_, int baud_, int data_bit_, int stop_bit_):
+        s_port(port_), parity(parity_), baud(baud_), data_bit(data_bit_), stop_bit(stop_bit_){
+
+            uart_connect();
+            err_counter=0;
+        }
+        ~UartCtx(){ close(serial_port);}
+
+        void uart_connect(){
+            serial_port = open(s_port.c_str(), O_RDWR);
+            valid = (tcgetattr(serial_port, &tty) != 0);
+            switch (parity)
+            {
+            case 'N':
+            case 'n':
+                tty.c_cflag &= ~PARENB; // Clear parity bit, disabling parity (most common)
+                break;
+            case 'O':
+            case 'o':
+                tty.c_cflag |= PARENB;
+                tty.c_cflag |= PARODD; // odd
+                break;
+            case 'E':
+            case 'e':
+                tty.c_cflag |= PARENB;
+                tty.c_cflag &= ~PARODD; // even
+                break;
+            default:
+                tty.c_cflag &= ~PARENB;
+                break;
+            }
+
+            switch (stop_bit)
+            {
+            case 1:
+                tty.c_cflag &= ~CSTOPB; // Clear stop field, only one stop bit used in communication (most common)
+                break;
+            default:
+                tty.c_cflag |= CSTOPB;
+                break;
+            }
+
+            tty.c_cflag &= ~CSIZE; // Clear all bits that set the data size
+
+            switch (data_bit)
+            {
+            case 8:
+                tty.c_cflag |= CS8; // 8 bits per byte (most common)
+                break;
+            case 7:
+                tty.c_cflag |= CS7; // 7 bits per byte
+                break;
+            case 6:
+                tty.c_cflag |= CS6; // 6 bits per byte
+                break;
+            case 5:
+                tty.c_cflag |= CS5; // 5 bits per byte
+                break;
+
+            default:
+                tty.c_cflag |= CS8; // 8 bits per byte (most common)
+                break;
+            }
+
+            tty.c_cflag &= ~CRTSCTS; // Disable RTS/CTS hardware flow control (most common)
+            tty.c_cflag |= CREAD | CLOCAL; // Turn on READ & ignore ctrl lines (CLOCAL = 1)
+
+            tty.c_lflag &= ~ICANON;
+            tty.c_lflag &= ~ECHO; // Disable echo
+            tty.c_lflag &= ~ECHOE; // Disable erasure
+            tty.c_lflag &= ~ECHONL; // Disable new-line echo
+            tty.c_lflag &= ~ISIG; // Disable interpretation of INTR, QUIT and SUSP
+            tty.c_iflag &= ~(IXON | IXOFF | IXANY); // Turn off s/w flow ctrl
+            tty.c_iflag &= ~(IGNBRK|BRKINT|PARMRK|ISTRIP|INLCR|IGNCR|ICRNL); // Disable any special handling of received bytes
+
+            tty.c_oflag &= ~OPOST; // Prevent special interpretation of output bytes (e.g. newline chars)
+            tty.c_oflag &= ~ONLCR; // Prevent conversion of newline to carriage return/line feed
+            // tty.c_oflag &= ~OXTABS; // Prevent conversion of tabs to spaces (NOT PRESENT ON LINUX)
+            // tty.c_oflag &= ~ONOEOT; // Prevent removal of C-d chars (0x004) in output (NOT PRESENT ON LINUX)
+
+            tty.c_cc[VTIME] = 10;    // Wait for up to 1s (10 deciseconds), returning as soon as any data is received.
+            tty.c_cc[VMIN] = 0;
+
+            // Set in/out baud rate to be 9600
+            // cfsetispeed(&tty, B9600);
+            // cfsetospeed(&tty, B9600);
+            tty.c_ispeed = baud;
+            tty.c_ospeed = baud;
+
+            // Save tty settings, also checking for error
+            if (tcsetattr(serial_port, TCSANOW, &tty) != 0) {
+                valid = false;
+                debprint("Error %i from tcsetattr: %s\n", errno, strerror(errno));
+            }
+        }
+
+        bool measure(){
+            bool res = false;
+            memset(&read_buf, '\0', sizeof(read_buf));
+            num_bytes = read(serial_port, &read_buf, sizeof(read_buf));
+            for(int i = 3; i < num_bytes; ++i){
+                uint8_t check_sum = read_buf[i];
+                uint8_t head = read_buf[i-3];
+                uint8_t byte_h = read_buf[i-2];
+                uint8_t byte_l = read_buf[i-1];
+
+                if(check_sum != ((head+byte_h+byte_l)&0xFF)){
+                    ++err_counter;
+                    continue;
+                }
+                res = true;
+                dist = (byte_h << 8) | byte_l;
+            }
+            return res;
+        }
+
+        bool get_valid(){
+            return valid;
+        }
+
+        uint get_distance(){
+            return dist;
+        }
+
+        std::string get_port(){
+            return s_port;
+        }
+
+        int get_error_counter(){
+            return err_counter;
+        }
+
+private:
+    bool valid;
+    int serial_port;
+    std::string s_port;
+    char parity;
+    uint8_t read_buf [256];
+    int baud;
+    int data_bit;
+    int stop_bit;
+    struct termios tty;
+    int num_bytes;
+    uint dist;
+    int err_counter;
+
+};
+
 
 
 std::string get_file_contents(const char *filename)
@@ -181,11 +338,93 @@ std::string get_file_contents(const char *filename)
     return contents.str();
 }
 
+enum LineType {
+    UART_LINE = 0,
+    MODBUS_LINE
+};
+
+struct Device{
+    int id;
+    int measure_reg;
+    int test_reg;
+};
+
+void operator >>  (const YAML::Node& node, Device& device){
+    node["id"] >> device.id;
+    node["measure_reg"] >>device.measure_reg;
+    node["test_reg"] >> device.test_reg;
+}
+
+struct MbLine{
+    std::string port;
+    int baud;
+    uint32_t boot_time;
+    std::vector<Device> devices;
+};
+
+void operator >> (const YAML::Node& node, MbLine& line){
+    node["port"] >> line.port;
+    node["baud"] >> line.baud;
+    node["boot_time"] >> line.boot_time;
+    const YAML::Node& devices  = node["devices"];
+    for(unsigned i = 0; i < devices.size(); i++){
+        Device device;
+        devices[i] >> device;
+        line.devices.push_back(device);
+    }
+}
+
+struct Modbus_list{
+    std::vector<MbLine> lines;
+};
+
+void operator >> (const YAML::Node& node, Modbus_list& ml){
+    for(unsigned i = 0; i < node.size(); i++){
+        MbLine line;
+        node[i] >> line;
+        ml.lines.push_back(line);
+    }
+}
+
+struct ULine{
+    std::string port;
+    int baud;
+    uint32_t boot_time;
+    int data_bit;
+    int stop_bit;
+    char parity_check;
+};
+
+void operator >> (const YAML::Node& node, ULine& line){
+    node["port"] >> line.port;
+    node["baud"] >> line.baud;
+    node["boot_time"] >> line.boot_time;
+    node["data_bit"] >> line.data_bit;
+    node["stop_bit"] >> line.stop_bit;
+    node["parity_check"] >> line.parity_check;
+
+}
+
+struct Uart_list{
+    std::vector<ULine> lines;
+};
+
+void operator >> (const YAML::Node& node, Uart_list& ul){
+    for(unsigned i = 0; i < node.size(); i++){
+        ULine line;
+        node[i] >> line;
+        ul.lines.push_back(line);
+    }
+}
+
+
 
 int main(int argc, char *argv[])
 {
-    std::vector<int> id{1,2,3};
-    std::vector<ModbusCtx> lines;
+
+    std::vector<ModbusCtx> mb_lines;
+    std::vector<UartCtx> u_lines;
+
     uint32_t time_out = 2'000'000;
     std::ofstream out;
     std::string config_name = "/home/tenderbook/sonars/";
@@ -196,14 +435,47 @@ int main(int argc, char *argv[])
     }
     using namespace std::chrono_literals;
 
+    std::ifstream fin(config_name.c_str());
+    YAML::Parser parser(fin);
+    // YAML::Node conf = YAML::LoadFile(config_name.c_str());
+    YAML::Node doc;
+
+    parser.GetNextDocument(doc);
+
+    Modbus_list ml;
+    if(const YAML::Node *mb = doc.FindValue("ModBus")){
+        *mb >> ml;
+    }
+
+    Uart_list ul;
+    if(const YAML::Node *ua = doc.FindValue("Uart")){
+        *ua >> ul;
+    }
+
+    for(MbLine line_ : ml.lines){
+        ModbusCtx mb{line_.port, line_.baud, 'N', 8, 1, time_out, line_.boot_time};
+        for(Device device_ : line_.devices){
+            SonarDev dev{device_.id, device_.test_reg, device_.measure_reg};
+            mb.add_device(dev);
+        }
+        mb_lines.push_back(mb);
+    }
+
+    for(ULine line_ : ul.lines){
+        UartCtx uart{line_.port, line_.parity_check, line_.baud, line_.data_bit, line_.stop_bit};
+        u_lines.push_back(uart);
+    }
+
+
+/*
     std::string contents = get_file_contents(config_name.c_str());
     ryml::Tree tree = ryml::parse_in_place(ryml::to_substr(contents));
 
     std::string out_file;
     auto out_file_ = tree["File"];
     out_file_ >> out_file;
-
     out.open(out_file);
+
 
     ryml::NodeRef modbus_lines = tree["ModBus"];
 
@@ -218,9 +490,8 @@ int main(int argc, char *argv[])
         std::string port_str;
         port >> port_str;
 
-        auto baud  = child["baud"];
         int i_baud;
-        baud >> i_baud;
+        child["baud"] >> i_baud;
 
         auto boot_time  = child["boot_time"];
         uint32_t i_bt;
@@ -257,6 +528,8 @@ int main(int argc, char *argv[])
         lines.push_back(line);
 
     }
+
+*/
 
     // modbusCtl.init(1, std::string("/dev/ttyUSB0").c_str(), 9600, 50000, 1100, "Sonar"); // 950 - doesn't work, 1000 - work, using 1100 ms
     // modbus_t *ctx;
@@ -295,7 +568,7 @@ int main(int argc, char *argv[])
     while (w_time <= 20.) {
         w_time = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - w_begin).count();
 
-        for(auto line:lines ){
+        for(auto line:mb_lines ){
             if(!line.get_valid()) {
                 continue;
             }
@@ -309,7 +582,7 @@ int main(int argc, char *argv[])
                 if(dev.measure()){
                     double delta_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - begin).count();
                     double work_time = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
-                    if(out.is_open()) out << dev.get_id() << "," <<  dev.get_distance() << "," << delta_time << "," << work_time << std::endl;
+                    // if(out.is_open()) out << dev.get_id() << "," <<  dev.get_distance() << "," << delta_time << "," << work_time << std::endl;
                     begin = std::chrono::steady_clock::now();
 
                     debug_counter(lable + "   distance=  ", dev.get_distance());
@@ -320,17 +593,38 @@ int main(int argc, char *argv[])
             }
 
         }
+
+        for(auto line:u_lines ){
+            if(!line.get_valid()) {
+                continue;
+            }
+
+            std::this_thread::sleep_for(0.02s); // меньше - ошибки
+
+            std::string lable ="uart line:  " + line.get_port();
+            if(line.measure()){
+                double delta_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - begin).count();
+                double work_time = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
+                // if(out.is_open()) out << 1 << "," <<  line.get_distance() << "," << delta_time << "," << work_time << std::endl;
+                begin = std::chrono::steady_clock::now();
+
+                debug_counter(lable + "   distance=  ", line.get_distance());
+            } else {
+                debug_counter(lable + "   error #  ", line.get_error_counter());
+            }
+
+        }
             // std::cout << "id: "<< id_<< ",  " << "rc: " << rc << '\n';
             // for (int i=0; i < rc; i++) {
             //     printf("reg[%d]=%d (0x%X)\n", i, tab_reg[i], tab_reg[i]);
             // }
 
             // std::this_thread::sleep_for(0.1s);
-            debprint.reinit();
+        debprint.reinit();
     }
 
     // modbus_free(ctx);
-    out.close();
+    // out.close();
 
     return 0;
 }

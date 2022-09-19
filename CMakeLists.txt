@@ -29,6 +29,7 @@ if(NOT MODBUS)
 endif()
 
 add_subdirectory(/home/tenderbook/rapidyaml ryml)
+add_subdirectory(/home/tenderbook/yaml-cpp-release-0.3.0 yaml-cpp)
 
 add_executable( sonars
                 sonars.cpp
@@ -44,11 +45,12 @@ target_include_directories( sonars PRIVATE
                 /home/tenderbook/Current_task/3rdparty/src/modbus
                 /home/tenderbook/Current_task/modules/src/common
                 /home/tenderbook/rapidyaml/src
+                /home/tenderbook/yaml-cpp-release-0.3.0/include
 )
 
 
 
 
-target_link_libraries(sonars  ${LIBRT} ${PTHREAD} ${MODBUS} rt ryml)
+target_link_libraries(sonars  ${LIBRT} ${PTHREAD} ${MODBUS} rt ryml yaml-cpp)
 
 

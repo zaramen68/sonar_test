@@ -40,6 +40,7 @@ add_executable( sonars
 )
 
 target_include_directories( sonars PRIVATE
+                .
                 /home/tenderbook/Current_task/modules/src
                 /home/tenderbook/Current_task/3rdparty/src/modbus/src
                 /home/tenderbook/Current_task/3rdparty/src/modbus

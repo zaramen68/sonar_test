@@ -147,6 +147,4 @@ private:
     uint32_t time_out;
 };
 
-
-
 #endif

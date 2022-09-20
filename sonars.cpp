@@ -144,8 +144,8 @@ void operator >> (const YAML::Node& node, Uart_list& ul){
 int main(int argc, char *argv[])
 {
 
-    std::vector<ModbusCtx> mb_lines;
-    std::vector<UartCtx> u_lines;
+    std::vector<std::shared_ptr<ModbusCtx>> mb_lines;
+    std::vector<std::shared_ptr<UartCtx>> u_lines;
 
     uint32_t time_out = 2'000'000;
     std::ofstream out;
@@ -175,111 +175,19 @@ int main(int argc, char *argv[])
     }
 
     for(MbLine line_ : ml.lines){
-        ModbusCtx mb{line_.port, line_.baud, 'N', 8, 1, time_out, line_.boot_time};
+        std::shared_ptr<ModbusCtx> mb(new ModbusCtx{line_.port, line_.baud, 'N', 8, 1, time_out, line_.boot_time});
         for(Device device_ : line_.devices){
             SonarDev dev{device_.id, device_.test_reg, device_.measure_reg};
-            mb.add_device(dev);
+            mb->add_device(dev);
         }
         mb_lines.push_back(mb);
     }
 
     for(ULine line_ : ul.lines){
-        UartCtx uart{line_.port, line_.parity_check, line_.baud, line_.data_bit, line_.stop_bit};
+        std::shared_ptr<UartCtx> uart(new UartCtx{line_.port, line_.parity_check, line_.baud, line_.data_bit, line_.stop_bit});
         u_lines.push_back(uart);
     }
 
-
-/*
-    std::string contents = get_file_contents(config_name.c_str());
-    ryml::Tree tree = ryml::parse_in_place(ryml::to_substr(contents));
-
-    std::string out_file;
-    auto out_file_ = tree["File"];
-    out_file_ >> out_file;
-    out.open(out_file);
-
-
-    ryml::NodeRef modbus_lines = tree["ModBus"];
-
-    for (ryml::NodeRef const& child : modbus_lines.children()) {
-        std::cout << "key: " << child.key() << std::endl;
-    }
-
-    for (ryml::NodeRef child : modbus_lines.children()) {
-        // ryml::NodeRef devices  = child["devices"];
-        auto port = child["port"];
-
-        std::string port_str;
-        port >> port_str;
-
-        int i_baud;
-        child["baud"] >> i_baud;
-
-        auto boot_time  = child["boot_time"];
-        uint32_t i_bt;
-        boot_time >> i_bt;
-        // const char* port_n = port_str.c_str();
-
-        ModbusCtx line{port_str, i_baud, 'N', 8, 1, time_out, i_bt};
-
-        std::cout << "key: " << port.key() << " val: " << port_str << std::endl;
-
-        auto devices = child["devices"];
-
-
-        for(ryml::NodeRef device: devices.children()){
-
-            int id_i, mreg, treg;
-            auto id_ = device["id"];
-            id_ >> id_i;
-
-            auto measure_reg = device["measure_reg"];
-            measure_reg >> mreg;
-
-            auto test_reg = device["test_reg"];
-            test_reg >> treg;
-
-            SonarDev dev{id_i, treg, mreg};
-            line.add_device(dev);
-
-            std::cout << "key: " << device.key() << "  id:  " << id_i << "  mreg  " << mreg << "treg" << treg <<std::endl;
-
-
-        }
-
-        lines.push_back(line);
-
-    }
-
-*/
-
-    // modbusCtl.init(1, std::string("/dev/ttyUSB0").c_str(), 9600, 50000, 1100, "Sonar"); // 950 - doesn't work, 1000 - work, using 1100 ms
-    // modbus_t *ctx;
-
-    // ctx = modbus_new_rtu("/dev/ttyUSB0", 9600, 'N', 8, 1);
-    // if (ctx == NULL) {
-    //     std::cout << "Unable to create the libmodbus context" << std::endl;
-    //     return -1;
-    // }
-
-
-
-    // volatile _modbus_get_data *data = reinterpret_cast<_modbus_get_data *>(ctx);
-    // if (modbus_connect(ctx) == -1) {
-    //     std::cout << "Connection failed:"  <<  modbus_strerror(errno) << std::endl;
-    //     modbus_free(ctx);
-    //     return -1;
-    // }
-
-    // assert(data->slave != -1);
-
-    // uint8_t tab_bytes[MODBUS_MAX_PDU_LENGTH];
-
-
-    // int rc_s = modbus_report_slave_id(ctx, MODBUS_MAX_PDU_LENGTH, tab_bytes);
-    // if (rc_s > 1) {
-    //     printf("Run Status Indicator: %s\n", tab_bytes[1] ? "ON" : "OFF");
-    // }
 
     begin = std::chrono::steady_clock::now();
 
@@ -291,16 +199,16 @@ int main(int argc, char *argv[])
         w_time = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - w_begin).count();
 
         for(auto line:mb_lines ){
-            if(!line.get_valid()) {
+            if(!line->get_valid()) {
                 continue;
             }
 
-            for(auto dev:line.get_devices()){
+            for(auto dev:line->get_devices()){
 
                 std::this_thread::sleep_for(0.02s); // меньше - ошибки
 
 
-                std::string lable ="line:  " + line.get_port() + "   sonar:  "+ std::to_string(dev.get_id());
+                std::string lable ="line:  " + line->get_port() + "   sonar:  "+ std::to_string(dev.get_id());
                 if(dev.measure()){
                     double delta_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - begin).count();
                     double work_time = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
@@ -317,22 +225,22 @@ int main(int argc, char *argv[])
         }
 
         for(auto line:u_lines ){
-            if(!line.get_valid()) {
+            if(!line->get_valid()) {
                 continue;
             }
 
             std::this_thread::sleep_for(0.02s); // меньше - ошибки
 
-            std::string lable ="uart line:  " + line.get_port();
-            if(line.measure()){
+            std::string lable ="uart line:  " + line->get_port();
+            if(line->measure()){
                 double delta_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - begin).count();
                 double work_time = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
                 // if(out.is_open()) out << 1 << "," <<  line.get_distance() << "," << delta_time << "," << work_time << std::endl;
                 begin = std::chrono::steady_clock::now();
 
-                debug_counter(lable + "   distance=  ", line.get_distance());
+                debug_counter(lable + "   distance=  ", line->get_distance());
             } else {
-                debug_counter(lable + "   error #  ", line.get_error_counter());
+                debug_counter(lable + "   error #  ", line->get_error_counter());
             }
 
         }

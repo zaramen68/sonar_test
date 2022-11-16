@@ -28,6 +28,7 @@ if(NOT MODBUS)
     message(FATAL_ERROR "libmodbus library not found")
 endif()
 
+
 add_subdirectory(/home/tenderbook/rapidyaml ryml)
 add_subdirectory(/home/tenderbook/yaml-cpp-release-0.3.0 yaml-cpp)
 
@@ -45,6 +46,7 @@ target_include_directories( sonars PRIVATE
                 /home/tenderbook/Current_task/3rdparty/src/modbus/src
                 /home/tenderbook/Current_task/3rdparty/src/modbus
                 /home/tenderbook/Current_task/modules/src/common
+                ./include
                 /home/tenderbook/rapidyaml/src
                 /home/tenderbook/yaml-cpp-release-0.3.0/include
 )

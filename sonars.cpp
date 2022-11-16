@@ -15,131 +15,43 @@
 #include <string>
 
 
-#include <unistd.h>			//Used for UART
-#include <fcntl.h>			//Used for UART
-#include <termios.h>	    // for UART
-
-#include <ryml_std.hpp>
-#include <ryml.hpp>
-
-#include "yaml-cpp/yaml.h"
+#include "mbsonar.hpp"
+#include "uartsonar.hpp"
 
 #include "debout.h"
 #include "Task.h"
 
-#include "uart.hpp"
-#include "sonar.hpp"
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#include "yaml_str.hpp"
+#include "yaml-cpp/yaml.h"
+#pragma GCC diagnostic pop
 
 
-struct _modbus_get_data {
-    /* Slave address */
-    int slave;
-    /* Socket or file descriptor */
-    int s;
-    int debug;
-    int error_recovery;
-    struct timeval response_timeout;
-    struct timeval byte_timeout;
-    struct timeval indication_timeout;
-    const void *backend;
-    void *backend_data;
-};
+template<typename T>
+void work(std::shared_ptr< T > dev, const std::string &port){
+
+    std::string const cloud_frame_id_{"cloud_frame"};
+
+    auto now = std::chrono::steady_clock::now();
+    const auto time_start = std::chrono::time_point_cast<std::chrono::milliseconds>(now).time_since_epoch().count();
 
 
+    std::string lable = port;
+    if(dev->measure()){
+        // publish_laser_cloud(dev->get_publisher(), dev->get_obstacle(), cloud_frame_id_);
 
-
-std::string get_file_contents(const char *filename)
-{
-    std::ifstream in(filename, std::ios::in | std::ios::binary);
-    if (!in) {
-        std::cerr << "could not open " << filename << std::endl;
-        exit(1);
+        debug_counter(lable + "   distance=  ", dev->get_distance()/1000.);
+    } else {
+        debug_counter(lable + "   no data  error_counter = ", dev->get_error_counter());
     }
-    std::ostringstream contents;
-    contents << in.rdbuf();
-    return contents.str();
+
+    now = std::chrono::steady_clock::now();
+    const auto time_stop = std::chrono::time_point_cast<std::chrono::milliseconds>(now).time_since_epoch().count();
+
+    dev->get_debug(time_start, time_stop);
+    debprint.reinit();
 }
-
-enum LineType {
-    UART_LINE = 0,
-    MODBUS_LINE
-};
-
-struct Device{
-    int id;
-    int measure_reg;
-    int test_reg;
-};
-
-void operator >>  (const YAML::Node& node, Device& device){
-    node["id"] >> device.id;
-    node["measure_reg"] >>device.measure_reg;
-    node["test_reg"] >> device.test_reg;
-}
-
-struct MbLine{
-    std::string port;
-    int baud;
-    uint32_t boot_time;
-    std::vector<Device> devices;
-};
-
-void operator >> (const YAML::Node& node, MbLine& line){
-    node["port"] >> line.port;
-    node["baud"] >> line.baud;
-    node["boot_time"] >> line.boot_time;
-    const YAML::Node& devices  = node["devices"];
-    for(unsigned i = 0; i < devices.size(); i++){
-        Device device;
-        devices[i] >> device;
-        line.devices.push_back(device);
-    }
-}
-
-struct Modbus_list{
-    std::vector<MbLine> lines;
-};
-
-void operator >> (const YAML::Node& node, Modbus_list& ml){
-    for(unsigned i = 0; i < node.size(); i++){
-        MbLine line;
-        node[i] >> line;
-        ml.lines.push_back(line);
-    }
-}
-
-struct ULine{
-    std::string port;
-    int baud;
-    uint32_t boot_time;
-    int data_bit;
-    int stop_bit;
-    char parity_check;
-};
-
-void operator >> (const YAML::Node& node, ULine& line){
-    node["port"] >> line.port;
-    node["baud"] >> line.baud;
-    node["boot_time"] >> line.boot_time;
-    node["data_bit"] >> line.data_bit;
-    node["stop_bit"] >> line.stop_bit;
-    node["parity_check"] >> line.parity_check;
-
-}
-
-struct Uart_list{
-    std::vector<ULine> lines;
-};
-
-void operator >> (const YAML::Node& node, Uart_list& ul){
-    for(unsigned i = 0; i < node.size(); i++){
-        ULine line;
-        node[i] >> line;
-        ul.lines.push_back(line);
-    }
-}
-
-
 
 int main(int argc, char *argv[])
 {
@@ -147,8 +59,13 @@ int main(int argc, char *argv[])
     std::vector<std::shared_ptr<ModbusCtx>> mb_lines;
     std::vector<std::shared_ptr<UartCtx>> u_lines;
 
-    uint32_t time_out = 2'000'000;
+    constexpr uint32_t time_out = 500'000;
+    bool dump_flag = true;
+
+
     std::ofstream out;
+    out.open(log_path+"time_log.data");
+
     std::string config_name = "/home/tenderbook/sonars/";
     std::chrono::steady_clock::time_point begin;
 
@@ -174,17 +91,22 @@ int main(int argc, char *argv[])
         *ua >> ul;
     }
 
+    //  ModBus devices list
+    //
+
     for(MbLine line_ : ml.lines){
         std::shared_ptr<ModbusCtx> mb(new ModbusCtx{line_.port, line_.baud, 'N', 8, 1, time_out, line_.boot_time});
         for(Device device_ : line_.devices){
-            SonarDev dev{device_.id, device_.test_reg, device_.measure_reg};
+
+            std::shared_ptr< SonarDev > dev(new SonarDev{device_.id, device_.sonar_name, device_.test_reg, device_.measure_reg, device_.c_data, dump_flag});
             mb->add_device(dev);
         }
         mb_lines.push_back(mb);
     }
 
     for(ULine line_ : ul.lines){
-        std::shared_ptr<UartCtx> uart(new UartCtx{line_.port, line_.parity_check, line_.baud, line_.data_bit, line_.stop_bit});
+
+        std::shared_ptr<UartCtx> uart(new UartCtx{line_.port, line_.sonar_name, line_.c_data, dump_flag});
         u_lines.push_back(uart);
     }
 
@@ -195,9 +117,64 @@ int main(int argc, char *argv[])
     w_begin = std::chrono::steady_clock::now();
     double w_time = 0.;
 
-    while (w_time <= 200.) {
+    while (w_time <= 20.) {
         w_time = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - w_begin).count();
 
+        uint64_t delta_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - w_begin).count();
+        uint64_t work_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
+        if(out.is_open()) { out  << delta_time << "," << work_time << std::endl; }
+
+        std::vector<std::thread> mb_threads;
+        for(auto line: mb_lines){
+            if(!line->get_valid()){
+
+                line->reconnect();
+                continue;
+            }
+            std::this_thread::sleep_for(0.02s);                 // меньше - ошибки
+            auto devices = line->get_devices();
+            std::string lable = line->get_lable();
+
+            for(auto dev_ : devices){
+                if(!dev_->get_valid()){
+
+                    dev_->is_alive();
+                    if(!dev_->get_valid()) {
+                        line->reconnect();
+                    }
+                    continue;
+                }
+                if(devices.size() > 1){
+                        std::this_thread::sleep_for(0.02s);         // меньше - ошибки
+                }
+
+                mb_threads.push_back(std::thread(work<SonarDev>, dev_, lable));
+            }
+        }
+        // UART loop
+        //
+        std::vector<std::thread> u_threads;
+
+        for(auto line: u_lines){
+            if(!line->get_valid()){
+
+                line->uart_reconnect();
+                continue;
+            }
+            std::this_thread::sleep_for(0.02s); // меньше - ошибки
+            std::string lable = line->get_lable();
+
+            u_threads.push_back(std::thread(work<UartCtx>, line, lable));
+        }
+
+        for(auto &mb_thread : mb_threads){
+            mb_thread.join();
+        }
+
+        for(auto &u_thread : u_threads){
+            u_thread.join();
+        }
+/*
         for(auto line:mb_lines ){
             if(!line->get_valid()) {
                 continue;
@@ -225,25 +202,29 @@ int main(int argc, char *argv[])
         }
 
         for(auto line:u_lines ){
-            if(!line->get_valid()) {
-                continue;
-            }
+                    if(!line->get_valid()) {
+                        continue;
+                    }
 
-            std::this_thread::sleep_for(0.02s); // меньше - ошибки
+                    std::this_thread::sleep_for(0.02s); // меньше - ошибки
 
-            std::string lable ="uart line:  " + line->get_port();
-            if(line->measure()){
-                double delta_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - begin).count();
-                double work_time = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
-                // if(out.is_open()) out << 1 << "," <<  line.get_distance() << "," << delta_time << "," << work_time << std::endl;
-                begin = std::chrono::steady_clock::now();
+                    std::string lable ="uart line:  " + line->get_port();
+                    if(line->measure()){
+                        double delta_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - begin).count();
+                        double work_time = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
+                        // if(out.is_open()) out << 1 << "," <<  line.get_distance() << "," << delta_time << "," << work_time << std::endl;
+                        begin = std::chrono::steady_clock::now();
 
-                debug_counter(lable + "   distance=  ", line->get_distance());
-            } else {
-                debug_counter(lable + "   error #  ", line->get_error_counter());
-            }
+                        debug_counter(lable + "   distance=  ", line->get_distance());
+                    } else {
+                        debug_counter(lable + "   error #  ", line->get_error_counter());
+                    }
 
-        }
+                }
+*/
+
+
+
             // std::cout << "id: "<< id_<< ",  " << "rc: " << rc << '\n';
             // for (int i=0; i < rc; i++) {
             //     printf("reg[%d]=%d (0x%X)\n", i, tab_reg[i], tab_reg[i]);
@@ -254,7 +235,7 @@ int main(int argc, char *argv[])
     }
 
     // modbus_free(ctx);
-    // out.close();
+    out.close();
 
     return 0;
 }

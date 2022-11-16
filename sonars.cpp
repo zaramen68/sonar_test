@@ -174,63 +174,7 @@ int main(int argc, char *argv[])
         for(auto &u_thread : u_threads){
             u_thread.join();
         }
-/*
-        for(auto line:mb_lines ){
-            if(!line->get_valid()) {
-                continue;
-            }
 
-            for(auto dev:line->get_devices()){
-
-                std::this_thread::sleep_for(0.02s); // меньше - ошибки
-
-
-                std::string lable ="line:  " + line->get_port() + "   sonar:  "+ std::to_string(dev.get_id());
-                if(dev.measure()){
-                    double delta_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - begin).count();
-                    double work_time = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
-                    // if(out.is_open()) out << dev.get_id() << "," <<  dev.get_distance() << "," << delta_time << "," << work_time << std::endl;
-                    begin = std::chrono::steady_clock::now();
-
-                    debug_counter(lable + "   distance=  ", dev.get_distance());
-                } else {
-                    debug_counter(lable + "   error #  ", dev.get_error_counter());
-                }
-
-            }
-
-        }
-
-        for(auto line:u_lines ){
-                    if(!line->get_valid()) {
-                        continue;
-                    }
-
-                    std::this_thread::sleep_for(0.02s); // меньше - ошибки
-
-                    std::string lable ="uart line:  " + line->get_port();
-                    if(line->measure()){
-                        double delta_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - begin).count();
-                        double work_time = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
-                        // if(out.is_open()) out << 1 << "," <<  line.get_distance() << "," << delta_time << "," << work_time << std::endl;
-                        begin = std::chrono::steady_clock::now();
-
-                        debug_counter(lable + "   distance=  ", line->get_distance());
-                    } else {
-                        debug_counter(lable + "   error #  ", line->get_error_counter());
-                    }
-
-                }
-*/
-
-
-
-            // std::cout << "id: "<< id_<< ",  " << "rc: " << rc << '\n';
-            // for (int i=0; i < rc; i++) {
-            //     printf("reg[%d]=%d (0x%X)\n", i, tab_reg[i], tab_reg[i]);
-            // }
-
-            // std::this_thread::sleep_for(0.1s);
         debprint.reinit();
     }
 

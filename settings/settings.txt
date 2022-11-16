@@ -1,0 +1,2 @@
+﻿std::string sonars_device "/dev/tty_sonars"
+int sonars_device_speed 115200

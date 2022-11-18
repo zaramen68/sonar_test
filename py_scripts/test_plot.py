@@ -1,5 +1,5 @@
 import matplotlib.pyplot as plt
-import matplotlib.colors as colors
+import matplotlib.lines as mlines
 import math
 import numpy as np
 
@@ -8,111 +8,79 @@ from scipy.optimize import curve_fit
 def func(x,  a, b):
     return  a*x+b
 
-clrs_hex = []
-for name, hex in colors.cnames.items():
-    clrs_hex.append(hex)
-
-use_colors = ["red", "green", "blue", "yelow"]
 # read data from a text file. One number per line
-arch = "/home/tenderbook/data/slalom/r_history.data"
+arch_path = "/home/tenderbook/logs/sonar/"
+arch_dict = {"node":{"file":"time_log.data", "color":"blue", "y": 0},
+              "sonar 12":{"file":"tty_sonar12_id_1.data", "color":"orange", "y": 1},
+              "sonar 22":{"file":"tty_sonar22_id_1.data", "color":"pink", "y": 2},
+              "sonar 13":{"file":"tty_sonar13_u_a_r_t.data", "color":"green", "y": 6},
+              "sonar 14":{"file":"tty_sonar14_u_a_r_t.data", "color":"red", "y": 4},
+              "sonar 23":{"file":"tty_sonar23_u_a_r_t.data", "color":"purple", "y": 5},
+              "sonar 24":{"file":"tty_sonar24_u_a_r_t.data", "color":"brown", "y": 3}}
 
-save_dir_name = "./not_ros/data/img/"
+n = 20
+msize = 5
+fig, ax = plt.subplots()
+ax.grid(True)
+ax.set_xlabel('epoch time (ms)')
+ax.set_ylabel('start request order')
 
-WINDTH = 0.405
-LIMIT = 1.2
-# FR = int(LIMIT/0.05)
-FR = 19
-HIST = 10
+label_lines = []
 
-GAP = WINDTH*2/FR
+starts = []
 
+for key in arch_dict:
+    line = arch_dict[key]
+    arch = arch_path + line["file"]
+    col = line["color"]
+    y = line["y"]
 
-v_lines = [-WINDTH + x*GAP for x in range(FR)]
+    k=0
+    tt=[]
+    yy=[]
+    vv = []
+    label_lines.append(mlines.Line2D([], [], color = col, marker = 'o', markersize = msize, label=key))
 
-k=0
-st = 9
+    for item in open(arch,'r'):
 
-frame = 0
+        try:
+            item = item.strip('\n')
+            item_ = item.split(',')
 
-fig1 = plt.figure(1)
+            start_ = int(item_[0])
+            stop_= int(item_[1])
+            v = int(item_[2])
 
-gr1 = fig1.add_subplot(1, 1, 1)
+            if key == "node":
+                starts.append(start_)
 
-gr1.vlines(v_lines, 0., LIMIT)
-gr1.set_xlim([-WINDTH - 0.05, WINDTH + 0.05])
-gr1.set_ylim([0., LIMIT+0.05])
+        except Exception as ex:
+            print(ex)
+        else:
+            k=k+1
+            step = int((stop_-start_)/n)
+            if step !=0 :
+                t = list(range(start_, stop_, step))
+            else:
+                t = [start_, stop_]
+            yy = yy+[y]*len(t)
+            tt = tt+t
+            if v ==1 :
+                vv = vv+[50]*len(t)
+                ax.plot([start_, stop_], [y, y], color=col, marker = 's', linewidth = int(msize/2), markersize = msize)
+            else:
+                vv = vv+[10]*len(t)
+                ax.plot([start_, stop_], [y, y], color='black', marker = 'x', linewidth = int(msize/2), markersize = msize)
 
-# plt.rcParams['figure.figsize'] = (plt.rcParamsDefault['figure.figsize'][0]*5, plt.rcParamsDefault['figure.figsize'][0]*5)
+    # ax.scatter(tt, yy, s=vv, color=col, label='{}'.format(key))
 
-with open(arch, 'rt') as file:
-    fcont = file.read()
-fcont = fcont.strip('\n')
-fcont = fcont.strip()
-lcont = fcont.split('\n')
+ax.legend(handles = label_lines)
 
-while(k < len(lcont)):
-    st = st+1
-    frame = frame + 1
-    odo_move = lcont[k]
-    odo = odo_move.split(',')
-    odo_x = float(odo[1])
-    odo_y = float(odo[2])
-    odo_t = float(odo[3])
-    k = k+1
+    # plt.show()
+ax.vlines(starts, 0, 6, colors=["blue"]*len(starts), linestyles="dashed")
 
-    for i in range(HIST):
-        x=[]
-        y=[]
-        l = lcont[k+i*FR:k+i*FR+FR]
-        for item in l:
-            n = item.split(',')
-            if float(n[1]) != 0.0 and float(n[2]) !=0.0:
-                x.append(float(n[1]))
-                y.append(float(n[2]))
-
-        xx = np.array(x)
-        yy = np.array(y)
-        gr1.plot(xx, yy, color=clrs_hex[i*5 +10], marker = 'o', markersize = 10, alpha = 0.5, label = "линия истории {}".format(i) )
-        if st  >= 10:
-            plt.show()
-
-    k = k+HIST*FR +1
-    res = lcont[k: k+FR]
-
-    x_res = []
-    y_res = []
-    for item in res:
-        r = item.split(',')
-        if float(r[1]) != 0.0 and float(r[2]) !=0.0:
-            x_res.append(float(r[1]))
-            y_res.append(float(r[2]))
-
-    xx=np.array(x_res)
-    yy=np.array(y_res)
-    gr1.plot(xx, yy, marker = 'o', markersize = 12, label = "результирующая линия")
-    gr1.legend()
-
-    k = k+FR+1
-    gr1.set(title = f'центральная камера. номер фрейма {frame}. odo: x = {odo_x:.4f}, y = {odo_y:.4f}, theta = {odo_t:.4f} ')
-    if st >= 10:
-        plt.show()
-        st = 0
-
-    fig1.clf()
-    gr1 = fig1.add_subplot(1, 1, 1)
-    gr1.vlines(v_lines, 0., LIMIT)
-    gr1.set_xlim([-WINDTH - 0.05, WINDTH + 0.05])
-    gr1.set_ylim([0., LIMIT+0.05])
-
-
-        # save_file_name = "profile_frame{}.png".format(str_frame_prev)
-        # save_file_name = save_dir_name+save_file_name
-
-
-
-
-        # fig1.savefig(save_file_name)
-
+plt.show()
+pass
 
 
 

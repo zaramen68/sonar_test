@@ -171,7 +171,7 @@ public:
 
         // Для нас  время тайм-аута 200 мс.
         tty.c_cc[VTIME] = 2;    // Wait for up to 1s (10 deciseconds), returning as soon as any data is received.
-        tty.c_cc[VMIN] = 0;
+        tty.c_cc[VMIN] = 0;     // minimum bites to receive
 
         // Установка скорости обмена.
         tty.c_cflag &= ~(CBAUD | CBAUDEX);
@@ -209,6 +209,8 @@ public:
             return false;
         }
 
+        ioctl(serial_port_fd, TCFLSH, 2); // Очистка буферов чтения-записи
+
         uint8_t read_buf [256];
         [[maybe_unused]] auto const dummy_ = write(serial_port_fd, dist_request, sizeof(dist_request));
         memset(&read_buf, '\0', sizeof(read_buf));
@@ -224,6 +226,9 @@ public:
             debug_counter("measure Uart Error reading: " + s_port, strerror(errno), num_bytes);
             return false;
         }
+        // Зачистка буфера
+        //
+        data_buffer.clear();
 
         // Запись в буфер  долгосрочного хранения
         //
@@ -299,10 +304,10 @@ public:
     }
 
 
-    void get_debug(uint64_t start_time,  uint64_t stop_time) {
+    void get_debug(uint64_t start_time,  uint64_t stop_time, bool res) {
         if(debug_out.is_open()){
 
-                debug_out  <<  start_time <<  "," << stop_time << std::endl;
+                debug_out  <<  start_time <<  "," << stop_time << "," << res << "," << valid << std::endl;
         }
     }
 

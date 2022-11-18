@@ -38,7 +38,8 @@ void work(std::shared_ptr< T > dev, const std::string &port){
 
 
     std::string lable = port;
-    if(dev->measure()){
+    bool res = dev->measure();
+    if(res){
         // publish_laser_cloud(dev->get_publisher(), dev->get_obstacle(), cloud_frame_id_);
 
         debug_counter(lable + "   distance=  ", dev->get_distance()/1000.);
@@ -49,7 +50,7 @@ void work(std::shared_ptr< T > dev, const std::string &port){
     now = std::chrono::steady_clock::now();
     const auto time_stop = std::chrono::time_point_cast<std::chrono::milliseconds>(now).time_since_epoch().count();
 
-    dev->get_debug(time_start, time_stop);
+    dev->get_debug(time_start, time_stop, res);
     debprint.reinit();
 }
 
@@ -59,7 +60,7 @@ int main(int argc, char *argv[])
     std::vector<std::shared_ptr<ModbusCtx>> mb_lines;
     std::vector<std::shared_ptr<UartCtx>> u_lines;
 
-    constexpr uint32_t time_out = 500'000;
+    constexpr uint32_t time_out = 300'000;
     bool dump_flag = true;
 
 
@@ -121,8 +122,7 @@ int main(int argc, char *argv[])
         w_time = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - w_begin).count();
 
         uint64_t delta_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - w_begin).count();
-        uint64_t work_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
-        if(out.is_open()) { out  << delta_time << "," << work_time << std::endl; }
+        uint64_t start_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
 
         std::vector<std::thread> mb_threads;
         for(auto line: mb_lines){
@@ -176,6 +176,10 @@ int main(int argc, char *argv[])
         }
 
         debprint.reinit();
+        uint64_t stop_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
+        if(out.is_open()) { out  << start_time << "," << stop_time << "," << 1 << "," << 1 << std::endl; }
+
+
     }
 
     // modbus_free(ctx);

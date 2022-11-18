@@ -135,7 +135,7 @@ public:
     void get_debug(uint64_t start_time,  uint64_t stop_time, bool res) {
         if(debug_out.is_open()){
 
-                debug_out  <<  start_time <<  "," << stop_time << "," << res << "," << valid << std::endl;
+                debug_out  <<  start_time <<  "," << stop_time << "," << res << "," << distance/1000. << std::endl;
         }
     }
 

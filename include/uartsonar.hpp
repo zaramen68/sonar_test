@@ -213,7 +213,7 @@ public:
         // uint8_t read_buf [1];
 
         ioctl(serial_port_fd, TCFLSH, 2); // Очистка буферов чтения-записи
-
+        data_buffer.clear();
 
         [[maybe_unused]] auto const dummy_ = write(serial_port_fd, dist_request, sizeof(dist_request));
         // memset(&read_buf, '\0', sizeof(read_buf));
@@ -226,10 +226,14 @@ public:
             num_bytes = read(serial_port_fd, &read_buf, sizeof(read_buf));
             debug_counter("Uart "+s_port+" read num_bytes = ", num_bytes);
 
-            if(num_bytes <= 0) {
+            if(num_bytes < 0) {
                 ++err_counter;
-                debug_counter("measure Uart Error reading: " + s_port, strerror(errno), num_bytes);
+                debug_counter("measure Uart Error reading: " + s_port, strerror(errno));
                 return false;
+            }
+            if(num_bytes==0){
+                debug_counter("Uart  " + s_port + "  reading: num of bytes:", num_bytes);
+                continue;
             }
 
             data_buffer.push_back(read_buf[0]);
@@ -349,7 +353,7 @@ public:
     void get_debug(uint64_t start_time,  uint64_t stop_time, bool res) {
         if(debug_out.is_open()){
 
-                debug_out  <<  start_time <<  "," << stop_time << "," << res << "," << valid << std::endl;
+                debug_out  <<  start_time <<  "," << stop_time << "," << res << "," << distance/1000. << std::endl;
         }
     }
 

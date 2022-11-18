@@ -203,62 +203,104 @@ public:
 
     bool measure(){
         static constexpr uint8_t dist_request[1] = {0x01};
+        static constexpr int64_t time_out = 200;
         is_answer = false;
         if(err_counter > 10){
             valid = false;
             return false;
         }
 
+        // uint8_t read_buf [1];
+
         ioctl(serial_port_fd, TCFLSH, 2); // Очистка буферов чтения-записи
 
-        uint8_t read_buf [256];
+
         [[maybe_unused]] auto const dummy_ = write(serial_port_fd, dist_request, sizeof(dist_request));
-        memset(&read_buf, '\0', sizeof(read_buf));
+        // memset(&read_buf, '\0', sizeof(read_buf));
 
-        auto st = current_time_ms();
+        const auto start_time = std::chrono::steady_clock::now();
+        while (std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start_time).count() < time_out)
+        {
+            uint8_t read_buf [1];
+            memset(&read_buf, '\0', sizeof(read_buf));
+            num_bytes = read(serial_port_fd, &read_buf, sizeof(read_buf));
+            debug_counter("Uart "+s_port+" read num_bytes = ", num_bytes);
 
-        num_bytes = read(serial_port_fd, &read_buf, sizeof(read_buf));
+            if(num_bytes <= 0) {
+                ++err_counter;
+                debug_counter("measure Uart Error reading: " + s_port, strerror(errno), num_bytes);
+                return false;
+            }
 
-        debug_counter("Uart "+s_port+" read num_bytes = ", num_bytes);
+            data_buffer.push_back(read_buf[0]);
 
-        if(num_bytes <= 0) {
-            ++err_counter;
-            debug_counter("measure Uart Error reading: " + s_port, strerror(errno), num_bytes);
-            return false;
+            if(data_buffer.size() > 3 ){
+
+                for(auto iter = data_buffer.rbegin(); iter < data_buffer.rend()-3; ++iter){
+                    uint8_t check_sum = *(iter);
+                    uint8_t head = *(iter+3);
+                    uint8_t byte_h = *(iter+2);
+                    uint8_t byte_l = *(iter+1);
+
+                    if(check_sum != ((head+byte_h+byte_l)&0xFF)){
+                        continue;
+                    }
+
+                    // data_buffer.erase(data_buffer.begin(), iter.base()); // Удаление хороших данных из буфера
+
+                    err_counter = 0;
+                    distance = (byte_h << 8) | byte_l;
+                    make_obstacle(distance, c_data);
+                    // if(dump_flag){ dump(); }
+                    is_answer = true;
+                    return true;
+                }
+            }
         }
+
+        // num_bytes = read(serial_port_fd, &read_buf, sizeof(read_buf));
+
+        // debug_counter("Uart "+s_port+" read num_bytes = ", num_bytes);
+
+        // if(num_bytes <= 0) {
+        //     ++err_counter;
+        //     debug_counter("measure Uart Error reading: " + s_port, strerror(errno), num_bytes);
+        //     return false;
+        // }
         // Зачистка буфера
         //
-        data_buffer.clear();
+        //data_buffer.clear();
 
         // Запись в буфер  долгосрочного хранения
         //
 
-        for (int i = 0; i<num_bytes; ++i){
-            data_buffer.push_back(read_buf[i]);
-        }
+        // for (int i = 0; i<num_bytes; ++i){
+        //     data_buffer.push_back(read_buf[i]);
+        // }
 
-        if(data_buffer.size() > 3 ){
+        // if(data_buffer.size() > 3 ){
 
-            for(auto iter = data_buffer.rbegin(); iter < data_buffer.rend()-3; ++iter){
-                uint8_t check_sum = *(iter);
-                uint8_t head = *(iter+3);
-                uint8_t byte_h = *(iter+2);
-                uint8_t byte_l = *(iter+1);
+        //     for(auto iter = data_buffer.rbegin(); iter < data_buffer.rend()-3; ++iter){
+        //         uint8_t check_sum = *(iter);
+        //         uint8_t head = *(iter+3);
+        //         uint8_t byte_h = *(iter+2);
+        //         uint8_t byte_l = *(iter+1);
 
-                if(check_sum != ((head+byte_h+byte_l)&0xFF)){
-                    continue;
-                }
+        //         if(check_sum != ((head+byte_h+byte_l)&0xFF)){
+        //             continue;
+        //         }
 
-                data_buffer.erase(data_buffer.begin(), iter.base()); // Удаление хороших данных из буфера
+        //         data_buffer.erase(data_buffer.begin(), iter.base()); // Удаление хороших данных из буфера
 
-                err_counter = 0;
-                distance = (byte_h << 8) | byte_l;
-                make_obstacle(distance, c_data);
-                // if(dump_flag){ dump(); }
-                is_answer = true;
-                return true;
-            }
-        }
+        //         err_counter = 0;
+        //         distance = (byte_h << 8) | byte_l;
+        //         make_obstacle(distance, c_data);
+        //         // if(dump_flag){ dump(); }
+        //         is_answer = true;
+        //         return true;
+        //     }
+        // }
+        err_counter++;
 
         return false;
     }

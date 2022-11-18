@@ -60,7 +60,7 @@ int main(int argc, char *argv[])
     std::vector<std::shared_ptr<ModbusCtx>> mb_lines;
     std::vector<std::shared_ptr<UartCtx>> u_lines;
 
-    constexpr uint32_t time_out = 300'000;
+    constexpr uint32_t time_out = 200'000;
     bool dump_flag = true;
 
 
